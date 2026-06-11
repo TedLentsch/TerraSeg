@@ -31,7 +31,7 @@ index-strategy = "unsafe-best-match"
 url = "https://download.pytorch.org/whl/cu124"
 
 [tool.uv.sources]
-torchrobotics = { git = "https://github.com/TedLentsch/torchrobotics.git", rev = "0ffa2a2510953c82e4cd3333e4449b57897bd390" }
+torchrobotics = { git = "https://github.com/TedLentsch/torchrobotics.git" }
 torch-scatter = { url = "https://data.pyg.org/whl/torch-2.4.0%2Bcu124/torch_scatter-2.1.2%2Bpt24cu124-cp310-cp310-linux_x86_64.whl" }
 flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.4cxx11abiFALSE-cp310-cp310-linux_x86_64.whl" }
 terraseg = { workspace = true }
