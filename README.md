@@ -21,10 +21,11 @@
 
 ## 📰 News
 
-* [2026-05-29] *Finished code release on GitHub!*
-* [2026-05-28] *Finished model weight release on Hugging Face!*
-* [2026-03-28] *Paper release on arXiv (v1)!*
-* [2026-02-21] *TerraSeg has been accepted for CVPR 2026!*
+* [2026-06-05] *Poster presented at CVPR 2026!*
+* [2026-05-29] *Code released on GitHub!*
+* [2026-05-28] *Model weights released on Hugging Face!*
+* [2026-03-28] *Paper released on arXiv (v1)!*
+* [2026-02-21] *TerraSeg has been accepted to CVPR 2026!*
 
 
 ## 🎥 Video
