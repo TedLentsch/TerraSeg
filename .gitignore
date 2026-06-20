@@ -17,11 +17,13 @@ __pycache__/
 *.swp
 
 # Dataset outputs.
+OmniLiDAR
 /OmniLiDAR/
 /pointcloud/
 /labels/
 
 # Pseudo-labeling outputs.
+PseudoLabeler
 PseudoLabeler/
 PseudoLabeler__ablation_study1__base/
 PseudoLabeler__ablation_study1__post/
