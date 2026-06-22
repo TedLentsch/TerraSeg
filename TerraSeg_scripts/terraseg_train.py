@@ -303,7 +303,11 @@ for epoch in range(1, EPOCHS + 1):
                 if target_labels.numel() > 0
                 else 0.0
             )
-            ground_fraction = float((target_labels == 0).float().mean().item())
+            ground_fraction = (
+                float((target_labels == 0).float().mean().item())
+                if target_labels.numel() > 0
+                else 0.0
+            )
 
             accum_batch_loss += loss_magnitude
             accum_correct += accuracy * num_points
@@ -350,10 +354,12 @@ for epoch in range(1, EPOCHS + 1):
         step_accuracy = accum_correct / max(accum_num_points, 1)
         step_ground_fraction = accum_ground / max(accum_num_points, 1)
 
-        ema_gnd_fraction = (
-            POS_WEIGHT_EMA_DECAY * ema_gnd_fraction
-            + (1.0 - POS_WEIGHT_EMA_DECAY) * step_ground_fraction
-        )
+        if math.isfinite(step_ground_fraction):
+            ema_gnd_fraction = (
+                POS_WEIGHT_EMA_DECAY * ema_gnd_fraction
+                + (1.0 - POS_WEIGHT_EMA_DECAY) * step_ground_fraction
+            )
+        ema_gnd_fraction = min(max(ema_gnd_fraction, 0.0), 1.0 - 1e-6)
         dynamic_pos_weight = ema_gnd_fraction / max(1.0 - ema_gnd_fraction, 1e-6)
         loss_object.set_pos_weight(dynamic_pos_weight)
 
