@@ -1,0 +1,30 @@
+[workspace]
+name = "terraseg-ros2"
+version = "0.1.0"
+description = "TerraSeg ROS2 deployment env: ROS2 Humble + the PyTorch CUDA stack in one interpreter."
+channels = ["https://prefix.dev/robostack-staging", "conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.10.*"
+pip = "*"
+ros-humble-desktop = "*"
+ros-humble-sensor-msgs-py = "*"
+colcon-common-extensions = "*"
+
+[pypi-options]
+extra-index-urls = ["https://download.pytorch.org/whl/cu124"]
+index-strategy = "unsafe-best-match"
+
+[pypi-dependencies]
+torch = "==2.4.1"
+spconv-cu124 = "==2.3.8"
+huggingface-hub = ">=0.24"
+torch-scatter = { url = "https://data.pyg.org/whl/torch-2.4.0%2Bcu124/torch_scatter-2.1.2%2Bpt24cu124-cp310-cp310-linux_x86_64.whl" }
+flash-attn = { url = "https://github.com/Dao-AILab/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu12torch2.4cxx11abiFALSE-cp310-cp310-linux_x86_64.whl" }
+torchrobotics = { git = "https://github.com/TedLentsch/torchrobotics.git" }
+ptv3 = { path = "ptv3", editable = true }
+terraseg = { path = "terraseg_lib", editable = true }
+
+[tasks]
+build = "colcon build --packages-select terraseg_ros2 --symlink-install"

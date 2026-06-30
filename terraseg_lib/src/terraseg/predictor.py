@@ -96,9 +96,13 @@ class TerraSegPredictor:
         decision_thres (float or None) : Decision threshold applied to the sigmoid of the
             logits. If None, the threshold stored in the checkpoint is used (falling back to
             0.5 if absent).
-        compile_model (bool) : If True, wrap the model with :func:`torch.compile` using
-            ``mode="reduce-overhead"`` for an additional inference speedup. Adds a one-time
-            compilation cost on the first forward pass. Default: False.
+        compile_model (bool) : If True, wrap the model with :func:`torch.compile`. Adds a
+            one-time compilation cost, warmed up at construction. Note that PTv3's spconv
+            path is opaque to inductor, so the gain is limited; eager is the recommended
+            default. Default: False.
+        tf32 (bool) : If True (default), enable TF32 tensor-core matmuls for a ~20% speedup
+            on Ampere+ GPUs. Slightly reduces matmul precision versus strict FP32; set False
+            to reproduce the paper's exact numerics.
         hf_revision (str or None) : Optional revision (branch, tag, or commit hash) when
             loading weights via an ``hf://`` URI. Default: ``None`` (latest on ``main``).
         cache_dir (str or Path or None) : Optional override of the Hugging Face cache
@@ -117,6 +121,7 @@ class TerraSegPredictor:
         device: str | torch.device | None = None,
         decision_thres: float | None = None,
         compile_model: bool = False,
+        tf32: bool = True,
         hf_revision: str | None = None,
         cache_dir: str | Path | None = None,
     ):
@@ -125,6 +130,15 @@ class TerraSegPredictor:
         else:
             device = torch.device(device)
         self.device = device
+
+        # TF32 routes FP32 matmuls onto Ampere+ tensor cores for a sizeable speedup.
+        # It is not bit-identical FP32 (reduced matmul mantissa), so it is exposed as a
+        # flag: default on for deployment speed, set tf32=False to reproduce the paper's
+        # exact FP32 numerics. Safe no-op on pre-Ampere GPUs and CPU.
+        if tf32:
+            torch.set_float32_matmul_precision("high")
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cudnn.allow_tf32 = True
 
         # Resolve checkpoint location (local path or Hugging Face URI).
         local_ckpt = resolve_checkpoint_path(
@@ -147,19 +161,29 @@ class TerraSegPredictor:
         model = model.to(self.device)
         model.eval()
 
-        if compile_model:
-            try:
-                model = torch.compile(model, mode="reduce-overhead")
-            except Exception as e:  # noqa: BLE001
-                warnings.warn(
-                    f"torch.compile failed ({e!r}); falling back to eager mode.", stacklevel=2
-                )
         self.model = model
 
+        # Set decision threshold before any warm-up forward pass.
         if decision_thres is not None:
             self.decision_thres = float(decision_thres)
         else:
             self.decision_thres = float(checkpoint.get("decision_thres", 0.5))
+
+        if compile_model:
+            eager_model = self.model
+            self.model = torch.compile(eager_model)
+            # torch.compile is lazy: the backend only runs on the first forward. Trigger
+            # it here inside a try/except so a compile failure degrades to eager instead
+            # of crashing on the first real scan. Also pays the one-time cost up front.
+            try:
+                warmup_coord = torch.randn(2048, 3, device=self.device) * 20.0
+                _ = self.predict_probs(coord=warmup_coord)
+            except Exception as e:  # noqa: BLE001
+                warnings.warn(
+                    f"torch.compile warm-up failed ({e!r}); using eager mode.",
+                    stacklevel=2,
+                )
+                self.model = eager_model
 
     @torch.inference_mode()
     def predict(

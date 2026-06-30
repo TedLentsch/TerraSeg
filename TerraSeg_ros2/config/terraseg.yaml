@@ -28,13 +28,17 @@ terraseg_node:
     output_topic: "/terraseg/segmented"
 
     # Inference device. Use "cuda:0" for the first GPU, or "cpu" to fall back to CPU.
-    # TerraSeg runs in FP32 only; lower-precision dtypes (BF16, FP16) are not supported
-    # because PTv3's sparse-convolution path becomes numerically unstable at reduced
-    # precision. There is no precision knob.
+    # TerraSeg runs in FP32: BF16/FP16 are unsupported because PTv3's sparse-conv path is
+    # numerically unstable at half precision. TF32 (see below) is the one allowed speed knob.
     device: "cuda:0"
 
-    # Wrap the model with torch.compile for an additional inference speedup. Adds a
-    # one-time compilation cost at the first scan (typically a few seconds). Recommended
-    # for real-time deployment; disable for fast iteration during development.
-    compile_model: true
+    # Wrap the model with torch.compile. PTv3's spconv path is opaque to the compiler, so
+    # the speedup is small and it adds a one-time compile cost; eager is the recommended
+    # default. Leave false unless you have profiled a benefit on your hardware.
+    compile_model: false
+
+    # TF32 tensor-core matmuls. ~20% faster on Ampere+ GPUs (e.g. RTX A6000) at a slight
+    # matmul-precision cost versus strict FP32. Default on for deployment; set false to
+    # reproduce the paper's exact FP32 numbers. Safe no-op on pre-Ampere GPUs and CPU.
+    tf32: true
   

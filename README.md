@@ -76,27 +76,25 @@ coord = torch.randn(50_000, 3, device="cuda")  # Your (N, 3) point cloud in mete
 labels = predictor.predict(coord=coord)        # Shape (N,) with datatype uint8. Labels: 0 = ground, 1 = non-ground.
 ```
 
-That is the entire integration. TerraSeg runs in FP32 (sparse-conv stability); the predictor optionally accepts `compile_model=True` to wrap the model with `torch.compile` for extra throughput on supported GPUs.
+That is the entire integration. TerraSeg runs in FP32 (sparse-conv stability). The predictor enables TF32 tensor-core matmuls by default (`tf32=True`) for a small speedup on Ampere+ GPUs; pass `tf32=False` to reproduce the paper's exact FP32 numerics. It also accepts `compile_model=True` to wrap the model with `torch.compile`, though the gain is limited because PTv3's spconv path is opaque to the compiler.
 
 *Note: TerraSegPredictor expects point cloud to be in TerraSeg-standardized frame (z = 0 approximately ground-aligned, +x forward).*
 
 
 ## 🤖 Quick start: Use TerraSeg as a ROS2 node
 
-Clone the repo, sync the workspace, build the ROS2 package, and launch:
+The ROS2 node ships with a [pixi](https://pixi.sh) environment that provides ROS2 Humble and the PyTorch CUDA stack in a single Python interpreter, so `rclpy` and `torch` share one interpreter and no system ROS2 or separate virtualenv is needed. Install pixi (`curl -fsSL https://pixi.sh/install.sh | bash`), then:
 
 ```bash
 git clone https://github.com/TedLentsch/TerraSeg.git && cd TerraSeg
-uv sync && source .venv/bin/activate
-source /opt/ros/${ROS_DISTRO}/setup.bash
-colcon build --packages-select terraseg_ros2 --symlink-install
+pixi install                 # One-time: ROS2 Humble + torch stack (large download).
+pixi shell                   # Enter the env (ros2 and colcon are on PATH).
+pixi run build               # The colcon build --packages-select terraseg_ros2 --symlink-install.
 source install/setup.bash
 ros2 launch terraseg_ros2 terraseg.launch.py
 ```
 
-The node subscribes to a `sensor_msgs/PointCloud2` topic (default `/lidar/points`) and publishes a labeled `sensor_msgs/PointCloud2` on `/terraseg/segmented` with an added `uint8 label` field (0 = ground, 1 = non-ground). It loads weights directly from [Hugging Face](https://huggingface.co/TedLentsch/TerraSeg) out of the box.
-
-On systems without native ROS2 (e.g. shared clusters using a Singularity or Docker container for ROS2), use the bundled `build.sh` helper: `source build.sh` after entering the container handles both the build and the entry-point shebang patch needed for the venv-backed Python to be picked up. See [`TerraSeg_ros2/README.md`](TerraSeg_ros2/README.md) for the full topic API, configuration reference, the containerized build recipe, and the realtime-design discussion (including why we do not use TensorRT).
+The node subscribes to a `sensor_msgs/PointCloud2` topic (default `/lidar/points`, sensor-data QoS) and publishes a labeled `sensor_msgs/PointCloud2` on `/terraseg/segmented` with an added `uint8 label` field (0 = ground, 1 = non-ground). By default it transforms each incoming cloud into `base_link` via TF, so the model receives a ground-aligned cloud regardless of sensor mounting, and it loads weights directly from [Hugging Face](https://huggingface.co/TedLentsch/TerraSeg) out of the box. See [`TerraSeg_ros2/README.md`](TerraSeg_ros2/README.md) for the topic API, the full configuration reference (`target_frame`, `tf32`, `compile_model`), frame handling, and measured performance.
 
 
 ## 📦 What's in this repository
@@ -106,11 +104,10 @@ This repository is organized as a `uv` workspace plus a sibling ROS2 package:
 * [`terraseg_lib/`](terraseg_lib/): The shared TerraSeg library: model definition, BatchNorm → GroupNorm swap, feature engineering, and the `TerraSegPredictor` class used for single-frame deployment. **This is the package you `uv add` into your own project.**
 * [`ptv3/`](ptv3/): Vendored Point Transformer v3 backbone, pinned to upstream commit `3229e9b7de1770c8ad17c316f8e349982de509f8`. See [`ptv3/README.md`](ptv3/README.md) for the one-time vendoring step.
 * [`TerraSeg_scripts/`](TerraSeg_scripts/): Training and offline-evaluation scripts for both the TerraSeg-B (~46M params) and TerraSeg-S (~12M params) variants. A single `VARIANT` constant switches between them. The `terraseg_test.py` evaluation script accepts checkpoints either by local path or by `hf://` URI.
-* [`TerraSeg_ros2/`](TerraSeg_ros2/): The ament_python ROS2 package that wraps `TerraSegPredictor` and exposes TerraSeg as a `sensor_msgs/PointCloud2` filter. Built with `colcon`, not with `uv`. See [`TerraSeg_ros2/README.md`](TerraSeg_ros2/README.md) for the full topic API and configuration.
+* [`TerraSeg_ros2/`](TerraSeg_ros2/): The ament_python ROS2 package that wraps `TerraSegPredictor` and exposes TerraSeg as a `sensor_msgs/PointCloud2` filter. Built with `colcon` inside the bundled `pixi` environment. See [`TerraSeg_ros2/README.md`](TerraSeg_ros2/README.md) for the full topic API and configuration.
 * [`OmniLiDAR_scripts/`](OmniLiDAR_scripts/): Dataset converters that aggregate 12 public autonomous-driving datasets into the unified OmniLiDAR format.
 * [`PseudoLabeler_scripts/`](PseudoLabeler_scripts/): The self-supervised PseudoLabeler module that produces ground / non-ground pseudo-labels on every OmniLiDAR scan, plus the ablation studies from the paper.
 * [`utils/`](utils/): Shared dataset, evaluation, and split utilities.
-* [`build.sh`](build.sh): Convenience script for building the ROS2 package inside a Singularity or Docker container; patches the colcon-generated entry-point shebang to use the uv venv's Python. Source it (do not execute it) inside the container.
 
 
 ## 🧠 Pre-trained weights
@@ -139,7 +136,7 @@ Training takes ~10 epochs on a single GPU and uses the balanced multi-dataset sa
 | --- | --- | --- |
 | **Volta CUDA** (sm_70) | V100, V100S | ❌ flash-attn requires Ampere+ |
 | **Turing CUDA** (sm_75) | RTX 20xx, T4 | ❌ flash-attn requires Ampere+ |
-| **Ampere CUDA** (sm_80, sm_86) | RTX 30xx, A40, A100 | ✅ Verified |
+| **Ampere CUDA** (sm_80, sm_86) | RTX 30xx, A40, A6000, A100 | ✅ Verified |
 | **Hopper CUDA** (sm_90) | H100, H200 | ✅ Expected to work |
 | **Blackwell CUDA** (sm_120) | RTX 50xx, RTX PRO, B100, B200 | ❌ Needs pin override (planned) |
 | **CPU only** | any | ❌ spconv `MaskImplicitGemm` is CUDA-only |
