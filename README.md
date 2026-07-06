@@ -35,7 +35,7 @@
     <img src="https://img.youtube.com/vi/A-WTTnsplmo/maxresdefault.jpg" alt="TerraSeg video" width="640">
   </a>
 </p>
-<p align="center"><i>▶︎ 90 seconds video on YouTube</i></p>
+<p align="center"><i>▶︎ 90 seconds video on YouTube showing qualitative results on our three main benchmarks</i></p>
 
 
 ## ⭐ Highlights
