@@ -8,7 +8,7 @@
 </p>
 
 <p align="center" style="font-size: 0.9em; font-style: italic;">
-  <sup>1</sup> Technical University of Delft,
+  <sup>1</sup> Delft University of Technology,
   <sup>2</sup> University of Alcalá
 </p>
 
